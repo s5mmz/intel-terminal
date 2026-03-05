@@ -1,43 +1,44 @@
 'use strict';
 /* ================================================================
    INTEL TERMINAL — Live RSS Feed Engine
-   Feed-first. Infinite scroll. Zero filters required.
+   Primary:  rss2json.com  (JSON, no XML parsing, includes images)
+   Fallback: allorigins.win (raw XML)
    ================================================================ */
 
-// ── CORS PROXIES ─────────────────────────────────────────────
-const PROXIES = [
-  u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
-  u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-];
+// ── FETCH STRATEGIES ─────────────────────────────────────────
+// rss2json converts RSS → clean JSON. Free tier: 50 items/feed, no key needed.
+const RSS2JSON  = u => `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(u)}&count=50&order_by=pubDate`;
+const ALLORIGINS = u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`;
+const CORSPROXY  = u => `https://corsproxy.io/?${encodeURIComponent(u)}`;
 
 // ── RSS FEEDS ─────────────────────────────────────────────────
 const FEEDS = [
-  // Google News searches — most reliable, always fresh
+  // Google News topic searches — always fresh, aggregates reliable publishers
   {
-    id: 'gn-main',
+    id: 'gn-conflict',
     name: 'Google News',
-    url: 'https://news.google.com/rss/search?q=iran+united+states+military+OR+nuclear+OR+sanctions&hl=en-US&gl=US&ceid=US:en',
+    url: 'https://news.google.com/rss/search?q=iran+united+states+conflict+OR+war+OR+strike+OR+sanctions&hl=en-US&gl=US&ceid=US:en',
     perspective: 'neutral', trusted: true,
   },
   {
     id: 'gn-nuclear',
     name: 'Google News',
-    url: 'https://news.google.com/rss/search?q=iran+nuclear+IAEA+OR+enrichment+OR+JCPOA&hl=en-US&gl=US&ceid=US:en',
+    url: 'https://news.google.com/rss/search?q=iran+nuclear+IAEA+OR+enrichment+OR+bomb&hl=en-US&gl=US&ceid=US:en',
     perspective: 'neutral', trusted: true,
   },
   {
-    id: 'gn-houthi',
+    id: 'gn-proxy',
     name: 'Google News',
-    url: 'https://news.google.com/rss/search?q=houthi+iran+OR+iran+proxy+OR+iran+hezbollah&hl=en-US&gl=US&ceid=US:en',
+    url: 'https://news.google.com/rss/search?q=houthi+iran+OR+hezbollah+iran+OR+iran+proxy&hl=en-US&gl=US&ceid=US:en',
     perspective: 'neutral', trusted: true,
   },
   {
-    id: 'gn-strike',
+    id: 'gn-trump',
     name: 'Google News',
-    url: 'https://news.google.com/rss/search?q=iran+airstrike+OR+iran+missile+OR+iran+drone+attack&hl=en-US&gl=US&ceid=US:en',
+    url: 'https://news.google.com/rss/search?q=trump+iran+OR+iran+trump+sanctions+2025+OR+2026&hl=en-US&gl=US&ceid=US:en',
     perspective: 'neutral', trusted: true,
   },
-  // Direct feeds
+  // Direct outlet feeds
   {
     id: 'bbc',
     name: 'BBC Middle East',
@@ -70,48 +71,43 @@ const FEEDS = [
   },
 ];
 
-// ── RELEVANCE KEYWORDS ────────────────────────────────────────
+// ── RELEVANCE — any ONE match includes the article ────────────
 const KEYWORDS = [
-  'iran','iranian','irgc','tehran','khamenei','pezeshkian','rouhani',
-  'quds','quds force','hormuz','strait of hormuz',
-  'jcpoa','nuclear deal','enrichment','iaea','centrifuge','uranium',
-  'maximum pressure','iran sanction',
-  'houthi','hezbollah','kataib','iran proxy','islamic resistance',
-  'iran missile','iran drone','iran attack','iran strike','iran navy',
-  'trump iran','us iran','iran us','america iran','centcom iran',
+  'iran','iranian','irgc','tehran','khamenei','pezeshkian',
+  'quds','hormuz','jcpoa','nuclear deal','enrichment','iaea',
+  'maximum pressure','houthi','hezbollah','kataib',
+  'iran missile','iran drone','iran attack','iran strike',
   'islamic republic','revolutionary guard','persian gulf',
+  'iran sanction','iran nuclear','iran us','us iran',
+  'trump iran','iran war','iran israel',
 ];
 
-// ── SOURCE → PERSPECTIVE MAP ──────────────────────────────────
+// ── SOURCE PERSPECTIVE MAP ────────────────────────────────────
 const SRC_PERSP = {
-  'irna':'iran','press tv':'iran','presstv':'iran','mehr news':'iran',
-  'tehran times':'iran','tasnim':'iran','fars news':'iran',
-  'bbc':'neutral','reuters':'neutral','ap ':'neutral',
-  'associated press':'neutral','al jazeera':'neutral',
-  'guardian':'neutral','financial times':'neutral','ft.com':'neutral',
-  'axios':'neutral','politico':'neutral','new york times':'neutral',
-  'washington post':'neutral','npr':'neutral','cnn':'neutral',
-  'bloomberg':'neutral','time':'neutral','wsj':'neutral',
-  'wall street journal':'neutral',
+  'irna':'iran','press tv':'iran','presstv':'iran',
+  'mehr':'iran','tasnim':'iran','fars':'iran','tehran times':'iran',
+  'bbc':'neutral','reuters':'neutral','associated press':'neutral',
+  'al jazeera':'neutral','guardian':'neutral','ft':'neutral',
+  'financial times':'neutral','axios':'neutral','politico':'neutral',
+  'new york times':'neutral','washington post':'neutral',
+  'nyt':'neutral','cnn':'neutral','bloomberg':'neutral','npr':'neutral',
   'pentagon':'us','centcom':'us','state department':'us',
 };
 
 // ── CLASSIFIERS ───────────────────────────────────────────────
 function classifyType(t) {
-  if (/nuclear|enrichment|iaea|centrifuge|jcpoa|uranium|plutonium/.test(t)) return 'nuclear';
-  if (/cyber|hack|malware|breach|ransomware/.test(t))                        return 'cyber';
-  if (/sanction|embargo|oil export|economy|rial|trade|tariff/.test(t))       return 'economic';
-  if (/negotiat|diplomat|talk|deal|treaty|summit|envoy|agreement/.test(t))   return 'diplomatic';
+  if (/nuclear|enrichment|iaea|centrifuge|jcpoa|uranium|plutonium/.test(t))  return 'nuclear';
+  if (/cyber|hack|malware|ransomware|breach/.test(t))                         return 'cyber';
+  if (/sanction|embargo|oil export|economy|rial|trade|tariff/.test(t))        return 'economic';
+  if (/negotiat|diplomat|talk|deal|treaty|summit|envoy|agreement/.test(t))    return 'diplomatic';
   return 'military';
 }
-
 function classifySeverity(t) {
-  if (/nuclear weapon|ballistic|direct attack|killed|airstrike|invasion|war declaration/.test(t)) return 'critical';
-  if (/missile|drone attack|sanction.*oil|military action|shoot down|explosion|casualties/.test(t)) return 'high';
-  if (/tension|warning|condemn|protest|retaliation|standoff|dispute/.test(t)) return 'medium';
+  if (/ballistic missile|direct attack|killed|airstrike|invasion|war declaration|nuclear weapon/.test(t)) return 'critical';
+  if (/missile|drone attack|shoot down|explosion|casualties|military action/.test(t))                     return 'high';
+  if (/tension|warning|condemn|protest|standoff|dispute|retaliation/.test(t))                             return 'medium';
   return 'low';
 }
-
 function getPerspective(srcName, feedPersp) {
   if (feedPersp === 'iran') return 'iran';
   const s = (srcName || '').toLowerCase();
@@ -119,110 +115,172 @@ function getPerspective(srcName, feedPersp) {
   return 'neutral';
 }
 
-// ── PARSE GOOGLE NEWS TITLE "Headline - Source" ───────────────
-function splitGnTitle(raw) {
-  const m = raw.match(/^(.+?)\s+-\s+([^-]{2,40})$/);
-  return m ? { title: m[1].trim(), source: m[2].trim() } : { title: raw, source: '' };
+// ── UTILS ─────────────────────────────────────────────────────
+function stripHtml(s) {
+  return (s || '').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
 }
-
-// ── EXTRACT IMAGE FROM RSS ITEM ───────────────────────────────
-function extractImage(item) {
-  // media:content
-  const mc = item.querySelector('content');
-  if (mc?.getAttribute('url')?.match(/\.(jpg|jpeg|png|webp)/i)) return mc.getAttribute('url');
-  // enclosure
-  const enc = item.querySelector('enclosure');
-  if (enc?.getAttribute('type')?.startsWith('image')) return enc.getAttribute('url');
-  // og:image in description HTML
-  const desc = item.querySelector('description')?.textContent || '';
-  const imgM  = desc.match(/<img[^>]+src=["']([^"']+\.(jpg|jpeg|png|webp))[^"']*["']/i);
-  if (imgM) return imgM[1];
-  return null;
-}
-
-// ── HELPERS ───────────────────────────────────────────────────
-function hashCode(s) {
+function hashId(s) {
   let h = 0;
-  for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
+  for (let i = 0; i < Math.min(s.length, 100); i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
   return Math.abs(h).toString(36);
 }
-
 function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1)  return 'JUST NOW';
-  if (m < 60) return `${m}m AGO`;
+  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
+  if (m < 1)   return 'JUST NOW';
+  if (m < 60)  return `${m}m AGO`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h AGO`;
-  const d = Math.floor(h / 24);
-  return `${d}d AGO`;
+  if (h < 24)  return `${h}h AGO`;
+  return `${Math.floor(h / 24)}d AGO`;
+}
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'2-digit' }).toUpperCase();
+}
+function safeIso(str) {
+  try { const d = new Date(str); return isNaN(d) ? new Date().toISOString() : d.toISOString(); }
+  catch { return new Date().toISOString(); }
+}
+function splitGnTitle(raw) {
+  const m = raw.match(/^(.+?)\s+-\s+([^-]{2,45})$/);
+  return m ? { title: m[1].trim(), src: m[2].trim() } : { title: raw, src: '' };
+}
+function isRelevant(text) {
+  const t = text.toLowerCase();
+  return KEYWORDS.some(k => t.includes(k));
 }
 
-function fmtFull(iso) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'2-digit' }).toUpperCase();
+// ── EXTRACT IMAGE from HTML string ───────────────────────────
+function extractImg(htmlStr) {
+  if (!htmlStr) return null;
+  const m = htmlStr.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m ? m[1] : null;
 }
 
-function stripHtml(s) { return s.replace(/<[^>]+>/g,'').replace(/&[a-z]+;/gi,' ').trim(); }
-
-// ── FETCH ─────────────────────────────────────────────────────
-async function fetchWithProxy(url, idx = 0) {
-  if (idx >= PROXIES.length) throw new Error('proxies exhausted');
-  const r = await fetch(PROXIES[idx](url), { signal: AbortSignal.timeout(12000) });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+// ================================================================
+//   FETCH — Strategy 1: rss2json.com (JSON response)
+// ================================================================
+async function fetchViaRss2Json(feed) {
+  const url = RSS2JSON(feed.url);
+  const r   = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`rss2json HTTP ${r.status}`);
   const d = await r.json();
-  return d.contents || d;
-}
+  if (d.status !== 'ok') throw new Error(d.message || 'rss2json returned error');
 
-function parseItems(xmlStr, feed) {
-  const doc   = new DOMParser().parseFromString(xmlStr, 'text/xml');
-  const items = doc.querySelectorAll('item');
-  const out   = [];
+  const out = [];
+  for (const item of (d.items || [])) {
+    let title   = (item.title || '').trim();
+    let srcName = item.author || d.feed?.title || feed.name;
+    let link    = item.link  || item.guid || '';
+    let desc    = stripHtml(item.description || item.content || '').slice(0, 700);
+    let date    = safeIso(item.pubDate);
+    let img     = item.thumbnail || extractImg(item.content) || extractImg(item.description) || null;
 
-  for (const item of items) {
-    const g   = t => item.querySelector(t)?.textContent?.trim() || '';
-    let title = g('title');
-    let link  = g('link') || item.querySelector('guid')?.textContent?.trim() || '';
-    let desc  = stripHtml(g('description')).slice(0, 600);
-    let srcName = g('source') || feed.name;
-    let pubDate = g('pubDate') || g('dc\\:date') || new Date().toISOString();
-
-    // Google News: split title
+    // Google News: "Headline - Source" format
     if (feed.id.startsWith('gn')) {
       const s = splitGnTitle(title);
       title   = s.title;
-      if (s.source) srcName = s.source;
+      if (s.src) srcName = s.src;
     }
 
-    const fullText = (title + ' ' + desc).toLowerCase();
-    if (!KEYWORDS.some(kw => fullText.includes(kw))) continue;
-
-    const perspective = getPerspective(srcName, feed.perspective);
-    const type        = classifyType(fullText);
-    const severity    = classifySeverity(fullText);
-    const date        = (() => { try { return new Date(pubDate).toISOString(); } catch { return new Date().toISOString(); } })();
-    const img         = extractImage(item);
-
-    const tags = [...new Set(KEYWORDS.filter(kw => fullText.includes(kw)).map(k => k.toUpperCase()))].slice(0, 6);
+    const combined = (title + ' ' + desc).toLowerCase();
+    if (!isRelevant(combined)) continue;
 
     out.push({
-      id: hashCode(title),
-      date, title, summary: desc, type, severity, perspective,
-      source: { name: srcName, url: link, trusted: feed.trusted },
-      tags, img, live: true, pinned: false,
+      id:          hashId(title),
+      date, title, summary: desc, img,
+      type:        classifyType(combined),
+      severity:    classifySeverity(combined),
+      perspective: getPerspective(srcName, feed.perspective),
+      source:      { name: srcName, url: link, trusted: feed.trusted },
+      tags:        KEYWORDS.filter(k => combined.includes(k)).slice(0,6).map(k => k.toUpperCase()),
+      live: true, pinned: false,
     });
   }
   return out;
 }
 
-async function fetchFeed(feed) {
-  let xml;
-  try       { xml = await fetchWithProxy(feed.url, 0); }
-  catch (e) { try { xml = await fetchWithProxy(feed.url, 1); } catch { return []; } }
-  if (!xml || typeof xml !== 'string') return [];
-  return parseItems(xml, feed);
+// ================================================================
+//   FETCH — Strategy 2: allorigins / corsproxy + XML parse
+// ================================================================
+async function fetchViaProxy(proxyFn, feed) {
+  const r = await fetch(proxyFn(feed.url), { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`proxy HTTP ${r.status}`);
+  const d   = await r.json();
+  const xml = d.contents || d;
+  if (!xml || typeof xml !== 'string') throw new Error('empty proxy response');
+
+  const doc   = new DOMParser().parseFromString(xml, 'text/xml');
+  const items = Array.from(doc.querySelectorAll('item'));
+  if (!items.length) throw new Error('no <item> tags found');
+
+  const out = [];
+  for (const item of items) {
+    // Helper — handles both namespace'd and plain tags
+    const g = (...tags) => {
+      for (const t of tags) {
+        const el = item.querySelector(t);
+        if (el?.textContent?.trim()) return el.textContent.trim();
+      }
+      return '';
+    };
+
+    let title   = g('title');
+    let link    = g('link') || item.querySelector('guid')?.textContent?.trim() || '';
+    let desc    = stripHtml(g('description', 'summary')).slice(0, 700);
+    let srcName = g('source') || feed.name;
+    let date    = safeIso(g('pubDate', 'published', 'dc\\:date', 'updated'));
+    let img     = item.querySelector('[url]')?.getAttribute('url')
+               || extractImg(g('description', 'content\\:encoded')) || null;
+
+    if (feed.id.startsWith('gn')) {
+      const s = splitGnTitle(title);
+      title   = s.title;
+      if (s.src) srcName = s.src;
+    }
+
+    const combined = (title + ' ' + desc).toLowerCase();
+    if (!isRelevant(combined)) continue;
+
+    out.push({
+      id:          hashId(title),
+      date, title, summary: desc, img,
+      type:        classifyType(combined),
+      severity:    classifySeverity(combined),
+      perspective: getPerspective(srcName, feed.perspective),
+      source:      { name: srcName, url: link, trusted: feed.trusted },
+      tags:        KEYWORDS.filter(k => combined.includes(k)).slice(0,6).map(k => k.toUpperCase()),
+      live: true, pinned: false,
+    });
+  }
+  return out;
 }
 
+// ── FETCH ONE FEED — try all strategies in order ─────────────
+async function fetchFeed(feed) {
+  // 1. rss2json (best: returns clean JSON + images)
+  try {
+    const items = await fetchViaRss2Json(feed);
+    console.log(`[${feed.name}] rss2json ✓ ${items.length} items`);
+    return items;
+  } catch (e) { console.warn(`[${feed.name}] rss2json failed:`, e.message); }
+
+  // 2. allorigins XML
+  try {
+    const items = await fetchViaProxy(ALLORIGINS, feed);
+    console.log(`[${feed.name}] allorigins ✓ ${items.length} items`);
+    return items;
+  } catch (e) { console.warn(`[${feed.name}] allorigins failed:`, e.message); }
+
+  // 3. corsproxy XML
+  try {
+    const items = await fetchViaProxy(CORSPROXY, feed);
+    console.log(`[${feed.name}] corsproxy ✓ ${items.length} items`);
+    return items;
+  } catch (e) { console.warn(`[${feed.name}] corsproxy failed:`, e.message); }
+
+  return [];
+}
+
+// ── DEDUP by headline ─────────────────────────────────────────
 function deduplicate(items) {
   const seen = new Map();
   return items.filter(ev => {
@@ -237,25 +295,19 @@ function deduplicate(items) {
 //   STATE
 // ================================================================
 const S = {
-  all:      [],  // all fetched items + pinned
+  all:      [],
   pinned:   [],
   loading:  false,
-  refreshed: null,
-
-  // infinite scroll
-  feedPage:    0,
-  explorePage: 0,
-  PAGE:        12,
-
-  // explore filters
-  filters: { perspective:'all', type:'all', severity:'all', search:'', dateFrom:'', dateTo:'' },
-
-  activeTab: 'feed',
+  feedPage: 0,
+  expPage:  0,
+  PAGE:     12,
+  activeTab:'feed',
+  filters:  { perspective:'all', type:'all', severity:'all', search:'', dateFrom:'', dateTo:'' },
 };
 
-function allItems()     { return [...S.pinned, ...S.all]; }
-function feedItems()    { return allItems().sort((a,b) => new Date(b.date)-new Date(a.date)); }
-function filteredItems() {
+const allItems    = () => [...S.pinned, ...S.all];
+const feedItems   = () => allItems().sort((a,b) => new Date(b.date) - new Date(a.date));
+const filteredItems = () => {
   const { perspective, type, severity, search, dateFrom, dateTo } = S.filters;
   return allItems().filter(ev => {
     if (perspective !== 'all' && ev.perspective !== perspective) return false;
@@ -265,15 +317,16 @@ function filteredItems() {
     if (dateTo   && ev.date.slice(0,10) > dateTo)   return false;
     if (search) {
       const q = search.toLowerCase();
-      if (!(ev.title.toLowerCase().includes(q) || ev.summary.toLowerCase().includes(q)
-         || ev.tags.some(t => t.toLowerCase().includes(q)))) return false;
+      if (!(ev.title.toLowerCase().includes(q) ||
+            ev.summary.toLowerCase().includes(q) ||
+            ev.tags.some(t => t.toLowerCase().includes(q)))) return false;
     }
     return true;
-  }).sort((a,b) => new Date(b.date)-new Date(a.date));
-}
+  }).sort((a,b) => new Date(b.date) - new Date(a.date));
+};
 
 // ================================================================
-//   RENDER — single card
+//   RENDER CARD
 // ================================================================
 const PERSP = {
   us:      { label:'US',      color:'var(--us)' },
@@ -287,29 +340,32 @@ const SEV = {
   medium:  { label:'MEDIUM',   color:'var(--med)' },
   low:     { label:'LOW',      color:'var(--low)' },
 };
-const TYPE_ICON = { military:'⚔', nuclear:'☢', diplomatic:'◎', economic:'◈', cyber:'⚡' };
-
-function srcClass(p) { return p==='iran'?'iran-src':p==='us'?'us-src':''; }
+const TICON = { military:'⚔', nuclear:'☢', diplomatic:'◎', economic:'◈', cyber:'⚡' };
+const srcCls = p => p==='iran'?'iran-src':p==='us'?'us-src':'';
 
 function renderCard(ev) {
   const pm = PERSP[ev.perspective] || PERSP.neutral;
   const sm = SEV[ev.severity]      || SEV.medium;
-  const ti = TYPE_ICON[ev.type]    || '◆';
+  const ic = TICON[ev.type]        || '◆';
 
-  const imgHtml = ev.img
-    ? `<img class="card-image" src="${ev.img}" alt="" loading="lazy" onerror="this.remove()">`
+  // Validate image URL before rendering
+  const imgHtml = ev.img && ev.img.startsWith('http')
+    ? `<img class="card-image" src="${ev.img}" alt="" loading="lazy" onerror="this.style.display='none'">`
     : '';
 
-  const tagsHtml = ev.tags.slice(0,5).map(t=>`<span class="tag">#${t.replace(/\s+/g,'_')}</span>`).join('');
+  const tagsHtml = ev.tags.slice(0,5).map(t =>
+    `<span class="tag">#${t.replace(/\s+/g,'_')}</span>`).join('');
+
+  const articleLink = ev.source?.url;
 
   return `
-<article class="event-card sev-${ev.severity}" data-id="${ev.id}">
+<article class="event-card sev-${ev.severity}">
   <div class="card-meta">
-    <span class="card-source ${srcClass(ev.perspective)}">${ev.source.name.toUpperCase()}</span>
+    <span class="card-source ${srcCls(ev.perspective)}">${(ev.source?.name||'').toUpperCase()}</span>
     <span class="meta-dot">·</span>
-    <span class="card-time">${fmtFull(ev.date)} · ${timeAgo(ev.date)}</span>
+    <span class="card-time">${fmtDate(ev.date)} · ${timeAgo(ev.date)}</span>
     <div class="meta-badges">
-      <span class="badge badge-type">${ti} ${ev.type.toUpperCase()}</span>
+      <span class="badge badge-type">${ic} ${ev.type.toUpperCase()}</span>
       <span class="badge badge-persp" style="color:${pm.color};border-color:${pm.color}">${pm.label}</span>
       <span class="badge badge-sev"   style="color:${sm.color};border-color:${sm.color}">${sm.label}</span>
       ${ev.live   ? '<span class="badge badge-live">● LIVE</span>' : ''}
@@ -317,97 +373,76 @@ function renderCard(ev) {
     </div>
   </div>
   <h3 class="card-headline">
-    ${ev.source.url
-      ? `<a href="${ev.source.url}" target="_blank" rel="noopener noreferrer">${ev.title}</a>`
+    ${articleLink
+      ? `<a href="${articleLink}" target="_blank" rel="noopener noreferrer">${ev.title}</a>`
       : ev.title}
   </h3>
   ${imgHtml}
   ${ev.summary ? `<p class="card-body">${ev.summary}</p>` : ''}
   <div class="card-footer">
     <div class="card-tags">${tagsHtml}</div>
-    ${ev.source.url
-      ? `<a href="${ev.source.url}" target="_blank" rel="noopener noreferrer" class="read-link">READ FULL ARTICLE →</a>`
+    ${articleLink
+      ? `<a href="${articleLink}" target="_blank" rel="noopener noreferrer" class="read-link">READ FULL ARTICLE →</a>`
       : ''}
   </div>
 </article>`;
 }
 
 // ================================================================
-//   RENDER — feed (paginated)
+//   RENDER FEED (paginated)
 // ================================================================
 function renderFeedPage(reset) {
   const stream = document.getElementById('feed-stream');
-  const items  = feedItems();
+  if (reset) { S.feedPage = 0; stream.innerHTML = ''; }
 
-  if (reset) {
-    S.feedPage = 0;
-    stream.innerHTML = '';
-  }
-
-  if (items.length === 0) {
+  const items = feedItems();
+  if (!items.length) {
     stream.innerHTML = `
       <div class="empty-state">
         <div class="e-icon">◈</div>
-        <div class="e-text">NO EVENTS YET</div>
+        <div class="e-text">NO EVENTS LOADED</div>
+        <div class="e-sub">Feeds may be blocked by network. Try refreshing or open in Chrome.</div>
       </div>`;
     return;
   }
 
-  const start = S.feedPage * S.PAGE;
-  const slice = items.slice(start, start + S.PAGE);
-  slice.forEach(ev => { stream.insertAdjacentHTML('beforeend', renderCard(ev)); });
+  const slice = items.slice(S.feedPage * S.PAGE, (S.feedPage + 1) * S.PAGE);
+  slice.forEach(ev => stream.insertAdjacentHTML('beforeend', renderCard(ev)));
   S.feedPage++;
 }
 
 // ================================================================
-//   RENDER — explore (paginated + filtered)
+//   RENDER EXPLORE (paginated + filtered)
 // ================================================================
 function renderExplorePage(reset) {
   const stream = document.getElementById('explore-stream');
-  const items  = filteredItems();
+  if (reset) { S.expPage = 0; stream.innerHTML = ''; }
 
-  if (reset) {
-    S.explorePage = 0;
-    stream.innerHTML = '';
-  }
+  const items = filteredItems();
+  document.getElementById('explore-count').textContent = `${items.length} events`;
 
-  document.getElementById('explore-count').textContent =
-    `${items.length} event${items.length !== 1 ? 's' : ''}`;
-
-  if (items.length === 0) {
-    stream.innerHTML = `
-      <div class="empty-state">
-        <div class="e-icon">◈</div>
-        <div class="e-text">NO MATCHES</div>
-      </div>`;
+  if (!items.length) {
+    stream.innerHTML = `<div class="empty-state"><div class="e-icon">◈</div><div class="e-text">NO MATCHES</div></div>`;
     return;
   }
 
-  const start = S.explorePage * S.PAGE;
-  const slice = items.slice(start, start + S.PAGE);
-  slice.forEach(ev => { stream.insertAdjacentHTML('beforeend', renderCard(ev)); });
-  S.explorePage++;
+  const slice = items.slice(S.expPage * S.PAGE, (S.expPage + 1) * S.PAGE);
+  slice.forEach(ev => stream.insertAdjacentHTML('beforeend', renderCard(ev)));
+  S.expPage++;
 }
 
 // ================================================================
-//   INFINITE SCROLL — IntersectionObserver
+//   INFINITE SCROLL
 // ================================================================
 function initScrollObserver() {
-  const opts = { rootMargin: '200px' };
-
-  const feedObs = new IntersectionObserver(entries => {
+  const obs = new IntersectionObserver(entries => {
     if (!entries[0].isIntersecting) return;
-    const items = feedItems();
-    if (S.feedPage * S.PAGE < items.length) renderFeedPage(false);
-  }, opts);
-  feedObs.observe(document.getElementById('sentinel'));
+    if (S.activeTab === 'feed'    && S.feedPage * S.PAGE < feedItems().length)     renderFeedPage(false);
+    if (S.activeTab === 'explore' && S.expPage  * S.PAGE < filteredItems().length) renderExplorePage(false);
+  }, { rootMargin: '300px' });
 
-  const exploreObs = new IntersectionObserver(entries => {
-    if (!entries[0].isIntersecting) return;
-    const items = filteredItems();
-    if (S.explorePage * S.PAGE < items.length) renderExplorePage(false);
-  }, opts);
-  exploreObs.observe(document.getElementById('explore-sentinel'));
+  obs.observe(document.getElementById('sentinel'));
+  obs.observe(document.getElementById('explore-sentinel'));
 }
 
 // ================================================================
@@ -418,49 +453,52 @@ function showFeedState(which) {
   document.getElementById('feed-error').style.display   = which === 'error'   ? '' : 'none';
   document.getElementById('feed-stream').style.display  = which === 'stream'  ? '' : 'none';
 }
+function setStatus(text, color) {
+  document.getElementById('status-text').textContent = text;
+  document.getElementById('dot-status').className = 'dot' + (color !== 'green' ? ` ${color}` : '');
+}
 
 async function fetchAllFeeds() {
   if (S.loading) return;
   S.loading = true;
   showFeedState('loading');
-  setStatus('SYNCING...', 'amber');
+  setStatus('SYNCING FEEDS...', 'amber');
   document.getElementById('btn-refresh').classList.add('spinning');
 
   try {
     const results = await Promise.allSettled(FEEDS.map(fetchFeed));
-    let fetched = [];
-    results.forEach((r,i) => {
-      if (r.status === 'fulfilled') fetched = fetched.concat(r.value);
-      else console.warn(`[${FEEDS[i].name}] failed`);
+    let all = [];
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') { all = all.concat(r.value); }
+      else console.error(`Feed "${FEEDS[i].name}" threw:`, r.reason);
     });
 
-    S.all = deduplicate(fetched);
-    S.refreshed = new Date();
+    S.all = deduplicate(all);
+    console.log(`[INTEL] Total after dedup: ${S.all.length} events`);
 
-    setStatus(`FEEDS ACTIVE · ${S.all.length} EVENTS`, 'green');
-    showFeedState('stream');
+    if (S.all.length === 0) {
+      // Still show stream view with empty state message
+      showFeedState('stream');
+      setStatus('0 EVENTS — CHECK CONSOLE', 'amber');
+    } else {
+      setStatus(`LIVE · ${S.all.length} EVENTS`, 'green');
+      showFeedState('stream');
+    }
+
     renderFeedPage(true);
-
-    // re-render explore if it was already visible
     if (S.activeTab === 'explore') renderExplorePage(true);
 
   } catch (err) {
-    console.error(err);
+    console.error('[INTEL] Fatal fetch error:', err);
     showFeedState('error');
-    setStatus('FEED ERROR', 'red');
+    setStatus('FETCH FAILED', 'red');
   }
 
   S.loading = false;
   document.getElementById('btn-refresh').classList.remove('spinning');
 }
 
-function setStatus(text, color) {
-  document.getElementById('status-text').textContent = text;
-  const dot = document.getElementById('dot-status');
-  dot.className = 'dot' + (color !== 'green' ? ` ${color}` : '');
-}
-
-// Auto-refresh every 15 min
+// Auto-refresh every 15 minutes
 setInterval(() => { if (!S.loading) fetchAllFeeds(); }, 15 * 60 * 1000);
 
 // ================================================================
@@ -484,29 +522,21 @@ function initTabs() {
 //   EXPLORE FILTERS
 // ================================================================
 function initExplore() {
-  // pill filters
   document.querySelectorAll('[data-key]').forEach(pill => {
     pill.addEventListener('click', () => {
-      const key = pill.dataset.key;
-      const val = pill.dataset.val;
+      const { key, val } = pill.dataset;
       S.filters[key] = val;
       document.querySelectorAll(`[data-key="${key}"]`).forEach(b => b.classList.remove('active'));
       pill.classList.add('active');
       renderExplorePage(true);
     });
   });
-
-  // search
   document.getElementById('explore-search').addEventListener('input', e => {
     S.filters.search = e.target.value.trim();
     renderExplorePage(true);
   });
-
-  // date range
   document.getElementById('ex-date-from').addEventListener('change', e => { S.filters.dateFrom = e.target.value; renderExplorePage(true); });
   document.getElementById('ex-date-to').addEventListener('change',   e => { S.filters.dateTo   = e.target.value; renderExplorePage(true); });
-
-  // clear
   document.getElementById('btn-clear-filters').addEventListener('click', () => {
     S.filters = { perspective:'all', type:'all', severity:'all', search:'', dateFrom:'', dateTo:'' };
     document.getElementById('explore-search').value = '';
@@ -518,28 +548,23 @@ function initExplore() {
 }
 
 // ================================================================
-//   ADD / PIN MANUAL EVENT
+//   MANUAL EVENT MODAL
 // ================================================================
 function initModal() {
   const modal  = document.getElementById('add-modal');
   const form   = document.getElementById('add-form');
-  const open   = document.getElementById('btn-add');
-  const close  = document.getElementById('modal-close');
-  const cancel = document.getElementById('modal-cancel');
+  const openM  = () => { modal.classList.add('open');    document.body.style.overflow = 'hidden'; };
+  const closeM = () => { modal.classList.remove('open'); document.body.style.overflow = ''; };
   form.querySelector('[name="date"]').value = new Date().toISOString().slice(0,10);
-
-  const openModal  = () => { modal.classList.add('open'); document.body.style.overflow = 'hidden'; };
-  const closeModal = () => { modal.classList.remove('open'); document.body.style.overflow = ''; };
-  open.addEventListener('click', openModal);
-  close.addEventListener('click', closeModal);
-  cancel.addEventListener('click', closeModal);
-  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
-
+  document.getElementById('btn-add').addEventListener('click', openM);
+  document.getElementById('modal-close').addEventListener('click', closeM);
+  document.getElementById('modal-cancel').addEventListener('click', closeM);
+  modal.addEventListener('click', e => { if (e.target === modal) closeM(); });
   form.addEventListener('submit', e => {
     e.preventDefault();
     const fd = new FormData(form);
-    const ev = {
-      id:          'pin-' + Date.now(),
+    S.pinned.unshift({
+      id: 'pin-' + Date.now(),
       date:        new Date(fd.get('date')).toISOString(),
       title:       fd.get('headline'),
       summary:     fd.get('summary') || '',
@@ -547,13 +572,12 @@ function initModal() {
       perspective: fd.get('perspective'),
       severity:    fd.get('severity'),
       source:      { name: fd.get('sourceName') || 'MANUAL', url: fd.get('sourceUrl') || '', trusted: false },
-      tags:        fd.get('tags').split(',').map(t=>t.trim().toUpperCase()).filter(Boolean),
-      img:         null, live: false, pinned: true,
-    };
-    S.pinned.unshift(ev);
-    closeModal(); form.reset();
+      tags:        (fd.get('tags')||'').split(',').map(t=>t.trim().toUpperCase()).filter(Boolean),
+      img: null, live: false, pinned: true,
+    });
+    closeM(); form.reset();
     form.querySelector('[name="date"]').value = new Date().toISOString().slice(0,10);
-    if (S.activeTab === 'feed')    renderFeedPage(true);
+    renderFeedPage(true);
     if (S.activeTab === 'explore') renderExplorePage(true);
   });
 }
@@ -562,38 +586,31 @@ function initModal() {
 //   MATRIX RAIN
 // ================================================================
 function initMatrix() {
-  const cv  = document.getElementById('matrix-canvas');
+  const cv = document.getElementById('matrix-canvas');
   if (!cv) return;
   const ctx = cv.getContext('2d');
   let W, H, drops;
-  const W_COL = 18;
-  const CHARS = '01アイウエカキクコサシスタチ◈◇⚡☢⚔◎';
-
+  const CW = 18;
+  const CH = '01アイウエカキクコ◈◇⚡☢⚔◎サシスタチ';
   function resize() {
-    W = cv.width  = window.innerWidth;
-    H = cv.height = window.innerHeight;
-    const cols = Math.floor(W / W_COL);
-    drops = drops ? drops.slice(0, cols) : [];
-    while (drops.length < cols) drops.push(Math.random() * -60);
+    W = cv.width = window.innerWidth; H = cv.height = window.innerHeight;
+    const n = Math.floor(W / CW);
+    drops = drops ? drops.slice(0,n) : [];
+    while (drops.length < n) drops.push(Math.random() * -60);
   }
-
   function draw() {
-    ctx.fillStyle = 'rgba(6,10,14,0.065)';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(6,10,14,0.065)'; ctx.fillRect(0,0,W,H);
     ctx.font = '13px monospace';
-    for (let i = 0; i < drops.length; i++) {
-      const y = drops[i] * W_COL;
-      ctx.fillStyle = 'rgba(130,255,160,0.5)';
-      ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], i * W_COL, y);
-      ctx.fillStyle = 'rgba(0,190,70,0.11)';
-      ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], i * W_COL, y - W_COL);
-      if (y > H && Math.random() > 0.975) drops[i] = 0;
+    drops.forEach((y,i) => {
+      ctx.fillStyle = 'rgba(130,255,160,0.48)';
+      ctx.fillText(CH[Math.floor(Math.random()*CH.length)], i*CW, y*CW);
+      ctx.fillStyle = 'rgba(0,190,70,0.10)';
+      ctx.fillText(CH[Math.floor(Math.random()*CH.length)], i*CW, y*CW - CW);
+      if (y*CW > H && Math.random() > 0.975) drops[i] = 0;
       drops[i] += 0.45;
-    }
+    });
   }
-
-  resize();
-  window.addEventListener('resize', resize);
+  resize(); window.addEventListener('resize', resize);
   setInterval(draw, 60);
 }
 
@@ -602,10 +619,10 @@ function initMatrix() {
 // ================================================================
 function startClock() {
   const el = document.getElementById('live-clock');
+  const p  = n => String(n).padStart(2,'0');
   const tick = () => {
-    const n = new Date();
-    const pad = x => String(x).padStart(2,'0');
-    el.textContent = `${pad(n.getUTCHours())}:${pad(n.getUTCMinutes())}:${pad(n.getUTCSeconds())} UTC`;
+    const d = new Date();
+    el.textContent = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
   };
   tick(); setInterval(tick, 1000);
 }
@@ -619,11 +636,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initExplore();
   initModal();
-
-  document.getElementById('btn-refresh').addEventListener('click', () => {
-    if (!S.loading) fetchAllFeeds();
-  });
-
+  initScrollObserver();
+  document.getElementById('btn-refresh').addEventListener('click', () => { if (!S.loading) fetchAllFeeds(); });
   fetchAllFeeds();
 });
 

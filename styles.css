@@ -376,6 +376,7 @@ body::after {
 }
 .empty-state .e-icon { font-size: 40px; color: var(--b1); }
 .empty-state .e-text { font-family: var(--display); font-size: 13px; letter-spacing: 4px; }
+.empty-state .e-sub  { font-size: 11px; color: var(--txt-mute); letter-spacing: 1px; max-width: 340px; text-align: center; line-height: 1.6; margin-top: 4px; }
 
 /* ================================================================
    EXPLORE VIEW
