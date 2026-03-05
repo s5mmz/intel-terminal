@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CONFLICT INTEL TERMINAL</title>
+  <title>INTEL TERMINAL</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,207 +14,160 @@
 
 <div id="app">
 
-  <!-- ═══════════════ HEADER ═══════════════ -->
+  <!-- ═══ HEADER ═══ -->
   <header id="header">
-    <div class="header-brand">
-      <span class="sys-label">// INTEL SYSTEM v2.0</span>
-      <h1 class="glitch-title" data-text="CONFLICT INTEL TERMINAL">CONFLICT INTEL TERMINAL</h1>
-    </div>
-
-    <div class="header-status">
-      <div class="status-chip">
-        <span class="status-dot" id="dot-live"></span>
-        <span id="feed-status">INITIALIZING...</span>
-      </div>
-      <div class="status-chip">
-        <span class="status-dot amber"></span>
-        <span id="last-refresh">NEVER SYNCED</span>
-      </div>
-      <div class="status-chip">
-        <span class="status-dot red"></span>
-        <span id="event-count">0 EVENTS</span>
+    <div class="brand">
+      <div class="brand-icon">◈</div>
+      <div class="brand-text">
+        <span class="brand-name glitch-title" data-text="INTEL TERMINAL">INTEL TERMINAL</span>
+        <span class="brand-sub">IRAN / US CONFLICT FEED</span>
       </div>
     </div>
 
-    <div id="live-clock" class="live-clock">UTC: --:--:--</div>
-
-    <div class="header-actions">
-      <button class="btn btn-primary btn-sm" id="btn-refresh" title="Refresh feeds">
-        <span id="refresh-icon">↻</span> REFRESH
+    <nav class="tabs">
+      <button class="tab active" data-tab="feed">
+        <span class="tab-icon">⊡</span> FEED
       </button>
-      <button class="btn btn-ghost btn-sm" id="btn-add">+ ADD</button>
+      <button class="tab" data-tab="explore">
+        <span class="tab-icon">⊕</span> EXPLORE
+      </button>
+    </nav>
+
+    <div class="header-right">
+      <div class="status-row">
+        <span class="dot" id="dot-status"></span>
+        <span id="status-text">LOADING...</span>
+      </div>
+      <div id="live-clock">--:--:-- UTC</div>
+      <button class="icon-btn" id="btn-refresh" title="Refresh feeds">↻</button>
+      <button class="icon-btn" id="btn-add" title="Add manual event">+</button>
     </div>
   </header>
 
-  <!-- ═══════════════ TOPIC BAR ═══════════════ -->
-  <div id="topic-bar">
-    <span class="topic-sys-label">TOPIC://</span>
-    <button class="topic-tab active" data-topic="iran-us">◈ IRAN / US</button>
-    <button class="topic-tab placeholder" data-topic="future" title="Coming soon">⊕ NEW TOPIC</button>
+  <!-- ═══ FEED VIEW ═══ -->
+  <div id="view-feed" class="view active">
+    <div class="feed-wrap">
+
+      <!-- loading -->
+      <div id="feed-loading" class="splash-state">
+        <div class="splash-spinner">◈</div>
+        <div class="splash-title">FETCHING LIVE INTEL<span class="cursor"></span></div>
+        <div class="splash-sub">Pulling from verified sources across both sides</div>
+      </div>
+
+      <!-- error -->
+      <div id="feed-error" class="splash-state" style="display:none">
+        <div class="splash-err">⚠</div>
+        <div class="splash-title" style="color:var(--crit)">FEED SYNC FAILED</div>
+        <div class="splash-sub">Check your connection</div>
+        <button class="pill-btn" onclick="App.refresh()">↻ RETRY</button>
+      </div>
+
+      <!-- stream of cards -->
+      <div id="feed-stream" style="display:none"></div>
+
+      <!-- infinite scroll sentinel -->
+      <div id="sentinel"></div>
+
+      <!-- load more indicator -->
+      <div id="load-more-indicator" style="display:none">
+        <div class="load-more-spin">◈</div>
+      </div>
+
+    </div>
   </div>
 
-  <!-- ═══════════════ BODY ═══════════════ -->
-  <div id="body-wrap">
+  <!-- ═══ EXPLORE VIEW ═══ -->
+  <div id="view-explore" class="view" style="display:none">
+    <div class="explore-wrap">
 
-    <!-- SIDEBAR -->
-    <aside id="sidebar">
-
-      <div class="filter-section">
-        <div class="filter-label">PERSPECTIVE</div>
-        <div class="filter-group">
-          <button class="filter-btn active" data-key="perspective" data-val="all">ALL</button>
-          <button class="filter-btn persp-us"   data-key="perspective" data-val="us">US</button>
-          <button class="filter-btn persp-iran" data-key="perspective" data-val="iran">IRAN</button>
-          <button class="filter-btn persp-neut" data-key="perspective" data-val="neutral">NEUTRAL</button>
-        </div>
-      </div>
-
-      <div class="filter-section">
-        <div class="filter-label">EVENT TYPE</div>
-        <div class="filter-group">
-          <button class="filter-btn active" data-key="type" data-val="all">ALL</button>
-          <button class="filter-btn" data-key="type" data-val="military">⚔ MILITARY</button>
-          <button class="filter-btn" data-key="type" data-val="nuclear">☢ NUCLEAR</button>
-          <button class="filter-btn" data-key="type" data-val="diplomatic">◎ DIPLOMATIC</button>
-          <button class="filter-btn" data-key="type" data-val="economic">◈ ECONOMIC</button>
-          <button class="filter-btn" data-key="type" data-val="cyber">⚡ CYBER</button>
-        </div>
-      </div>
-
-      <div class="filter-section">
-        <div class="filter-label">SEVERITY</div>
-        <div class="filter-group">
-          <button class="filter-btn active" data-key="severity" data-val="all">ALL</button>
-          <button class="filter-btn sev-crit"   data-key="severity" data-val="critical">CRITICAL</button>
-          <button class="filter-btn sev-high"   data-key="severity" data-val="high">HIGH</button>
-          <button class="filter-btn sev-medium" data-key="severity" data-val="medium">MEDIUM</button>
-          <button class="filter-btn sev-low"    data-key="severity" data-val="low">LOW</button>
-        </div>
-      </div>
-
-      <div class="filter-section">
-        <div class="filter-label">SOURCE</div>
-        <div class="filter-group" id="source-filters">
-          <button class="filter-btn active" data-key="source" data-val="all">ALL</button>
-          <!-- populated dynamically -->
-        </div>
-      </div>
-
-      <div class="filter-section">
-        <div class="filter-label">DATE RANGE</div>
-        <div class="date-inputs">
-          <div class="date-row">
-            <label>FROM</label>
-            <input type="date" id="date-from">
-          </div>
-          <div class="date-row">
-            <label>TO</label>
-            <input type="date" id="date-to">
-          </div>
-        </div>
-      </div>
-
-      <div class="sidebar-footer">
-        <button class="btn btn-ghost btn-sm w-full" id="btn-clear">⊘ CLEAR FILTERS</button>
-      </div>
-
-    </aside>
-
-    <!-- MAIN -->
-    <main id="main">
-
-      <!-- STATS BAR -->
-      <div id="stats-bar">
-        <div class="stat-item">
-          <div class="stat-val" id="s-total">0</div>
-          <div class="stat-lbl">TOTAL</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-val crit" id="s-critical">0</div>
-          <div class="stat-lbl">CRITICAL</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-val mil" id="s-military">0</div>
-          <div class="stat-lbl">MILITARY</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-val nuke" id="s-nuclear">0</div>
-          <div class="stat-lbl">NUCLEAR</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-val us" id="s-us">0</div>
-          <div class="stat-lbl">US SOURCES</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-val ir" id="s-iran">0</div>
-          <div class="stat-lbl">IRAN SOURCES</div>
-        </div>
-      </div>
-
-      <!-- TOOLBAR -->
-      <div id="toolbar">
+      <div class="explore-header">
         <div class="search-wrap">
           <span class="search-icon">⌕</span>
-          <input type="text" id="search-input" placeholder="SEARCH EVENTS, KEYWORDS, TAGS...">
-        </div>
-        <div class="toolbar-right">
-          <span id="result-count" class="result-count">— EVENTS</span>
-          <button class="btn btn-ghost btn-sm" id="btn-compact" title="Toggle compact view">⊟ COMPACT</button>
+          <input type="text" id="explore-search" placeholder="Search headlines, topics, keywords...">
+          <span id="explore-count" class="explore-count">— events</span>
         </div>
       </div>
 
-      <!-- LOADING STATE -->
-      <div id="loading-state" class="loading-state">
-        <div class="loading-spinner">◈</div>
-        <div class="loading-text">FETCHING INTEL FEEDS<span class="cursor"></span></div>
-        <div class="loading-sub">Pulling from verified sources...</div>
+      <div class="explore-filters">
+        <div class="filter-row">
+          <span class="filter-row-label">PERSPECTIVE</span>
+          <div class="pill-group">
+            <button class="pill active" data-key="perspective" data-val="all">ALL</button>
+            <button class="pill pill-us"   data-key="perspective" data-val="us">US</button>
+            <button class="pill pill-iran" data-key="perspective" data-val="iran">IRAN</button>
+            <button class="pill pill-neut" data-key="perspective" data-val="neutral">NEUTRAL</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <span class="filter-row-label">TYPE</span>
+          <div class="pill-group">
+            <button class="pill active" data-key="type" data-val="all">ALL</button>
+            <button class="pill" data-key="type" data-val="military">⚔ MILITARY</button>
+            <button class="pill" data-key="type" data-val="nuclear">☢ NUCLEAR</button>
+            <button class="pill" data-key="type" data-val="diplomatic">◎ DIPLOMATIC</button>
+            <button class="pill" data-key="type" data-val="economic">◈ ECONOMIC</button>
+            <button class="pill" data-key="type" data-val="cyber">⚡ CYBER</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <span class="filter-row-label">SEVERITY</span>
+          <div class="pill-group">
+            <button class="pill active"         data-key="severity" data-val="all">ALL</button>
+            <button class="pill pill-crit"   data-key="severity" data-val="critical">CRITICAL</button>
+            <button class="pill pill-high"   data-key="severity" data-val="high">HIGH</button>
+            <button class="pill pill-medium" data-key="severity" data-val="medium">MEDIUM</button>
+            <button class="pill pill-low"    data-key="severity" data-val="low">LOW</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <span class="filter-row-label">DATE</span>
+          <div class="pill-group date-group">
+            <input type="date" id="ex-date-from" placeholder="From">
+            <span style="color:var(--txt-mute);font-size:11px">→</span>
+            <input type="date" id="ex-date-to" placeholder="To">
+          </div>
+          <button class="pill" id="btn-clear-filters" style="margin-left:auto">⊘ CLEAR</button>
+        </div>
       </div>
 
-      <!-- ERROR STATE -->
-      <div id="error-state" class="error-state" style="display:none">
-        <div class="error-icon">⚠</div>
-        <div class="error-text">FEED FETCH FAILED</div>
-        <div class="error-sub">Check connection or try refreshing</div>
-        <button class="btn btn-primary btn-sm" onclick="window.app.refresh()">↻ RETRY</button>
-      </div>
-
-      <!-- EVENT FEED -->
-      <div id="event-feed" style="display:none"></div>
-
-    </main>
+      <div id="explore-stream"></div>
+      <div id="explore-sentinel"></div>
+    </div>
   </div>
+
 </div>
 
-<!-- ═══════════════ ADD EVENT MODAL ═══════════════ -->
+<!-- ═══ ADD EVENT MODAL ═══ -->
 <div id="add-modal">
-  <div class="modal-panel">
-    <div class="modal-header">
-      <span class="modal-title">// MANUAL EVENT ENTRY</span>
-      <button class="modal-close" id="modal-close">✕</button>
+  <div class="modal-box">
+    <div class="modal-top">
+      <span class="modal-label">// PIN EVENT</span>
+      <button id="modal-close">✕</button>
     </div>
     <form id="add-form">
       <div class="form-grid">
-        <div class="form-group span-2">
-          <label>HEADLINE *</label>
-          <input type="text" name="headline" placeholder="Event headline..." required>
+        <div class="fg span2">
+          <label>HEADLINE</label>
+          <input type="text" name="headline" required placeholder="Event headline...">
         </div>
-        <div class="form-group">
-          <label>DATE *</label>
+        <div class="fg">
+          <label>DATE</label>
           <input type="date" name="date" required>
         </div>
-        <div class="form-group">
-          <label>SOURCE NAME</label>
+        <div class="fg">
+          <label>SOURCE</label>
           <input type="text" name="sourceName" placeholder="e.g. Reuters">
         </div>
-        <div class="form-group span-2">
-          <label>SOURCE URL</label>
+        <div class="fg span2">
+          <label>ARTICLE URL</label>
           <input type="url" name="sourceUrl" placeholder="https://...">
         </div>
-        <div class="form-group span-2">
+        <div class="fg span2">
           <label>SUMMARY</label>
-          <textarea name="summary" placeholder="Brief description of the event..."></textarea>
+          <textarea name="summary" placeholder="What happened..."></textarea>
         </div>
-        <div class="form-group">
+        <div class="fg">
           <label>PERSPECTIVE</label>
           <select name="perspective">
             <option value="neutral">NEUTRAL</option>
@@ -222,7 +175,7 @@
             <option value="iran">IRAN</option>
           </select>
         </div>
-        <div class="form-group">
+        <div class="fg">
           <label>TYPE</label>
           <select name="type">
             <option value="military">MILITARY</option>
@@ -232,7 +185,7 @@
             <option value="cyber">CYBER</option>
           </select>
         </div>
-        <div class="form-group">
+        <div class="fg">
           <label>SEVERITY</label>
           <select name="severity">
             <option value="medium">MEDIUM</option>
@@ -241,14 +194,14 @@
             <option value="low">LOW</option>
           </select>
         </div>
-        <div class="form-group">
+        <div class="fg">
           <label>TAGS (comma separated)</label>
-          <input type="text" name="tags" placeholder="e.g. IRGC, sanctions, missile">
+          <input type="text" name="tags" placeholder="IRGC, sanctions, missile">
         </div>
       </div>
       <div class="form-actions">
-        <button type="button" class="btn btn-ghost btn-sm" id="modal-cancel">CANCEL</button>
-        <button type="submit" class="btn btn-primary btn-sm">⊕ ADD EVENT</button>
+        <button type="button" class="pill-btn ghost" id="modal-cancel">CANCEL</button>
+        <button type="submit" class="pill-btn">⊕ PIN EVENT</button>
       </div>
     </form>
   </div>
